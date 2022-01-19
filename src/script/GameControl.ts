@@ -13,6 +13,7 @@ import { Laya } from "Laya";
 import { Event } from "laya/events/Event";
 import { NeuralNetwork } from "./NeuralNetwork";
 import { Matrix } from "./Matrix";
+import { Label } from "laya/ui/Label";
 /**
  * 游戏控制脚本。定义了几个dropBox，bullet，createBoxInterval等变量，能够在IDE显示及设置该变量
  * 更多类型定义，请参考官方文档
@@ -31,7 +32,24 @@ export default class GameControl extends Script {
     /**子弹和盒子所在的容器对象 */
     private _gameBox: Sprite;
 
+    private shooter: Sprite;
+
+    private flag_first: boolean = true;
+
+    private inputImgs: Sprite[];
+    private hiddenImgs: Sprite[];
+    private outputImg: Sprite;
+
+    private inputLabels: Label[];
+    private hiddenLabels: Label[];
+    private outputLabel: Label;
+
+    public boxes: Sprite[];
+
     private nn: NeuralNetwork;
+
+    private ax: number=0; // shooter加速度
+
 
     constructor() {
         super();
@@ -65,6 +83,33 @@ export default class GameControl extends Script {
             let input1 = Math.round(Math.random()); // 0 or 1
             let output = input0 == input1 ? 0 : 1;
             this.nn.train([input0, input1], [output]);
+
+            // console.log(
+            //     'inputs : ',
+            //     this.nn.inputs.data, '\n',
+            //     'hidden : ',
+            //     this.nn.hidden.data,
+            //     'weight0 : ',
+            //     this.nn.weights0,
+            //     'weight1 : ',
+            //     this.nn.weights1,
+            //     'bias0 : ',
+            //     this.nn.bias0,
+            //     'bias1 : ',
+            //     this.nn.bias1
+            // );
+            console.log('inputs : ');
+            console.table(this.nn.inputs.data);
+            console.log('hidden : ');
+            console.table(this.nn.hidden.data);
+            console.log('weight0 : ');
+            console.table(this.nn.weights0.data);
+            console.log('weight1 : ');
+            console.table(this.nn.weights1.data);
+            console.log('bias0 : ');
+            console.table(this.nn.bias0.data);
+            console.log('bias1 : ');
+            console.table(this.nn.bias1.data);
         }
 
         // test output
@@ -72,36 +117,117 @@ export default class GameControl extends Script {
         console.log("0, 1 = " + this.nn.feedForward([0, 1]).data);
         console.log("1, 0 = " + this.nn.feedForward([1, 0]).data);
         console.log("1, 1 = " + this.nn.feedForward([1, 1]).data);
+
+        // nn for shoot !
+        console.log('nn for shoot !');
+        this.nn = new NeuralNetwork(NUM_INPUTS, NUM_HIDDEN, NUM_OUTPUTS);
+
+        // for (let i = 0; i < NUM_SAMPLES; i++) {
+
+        // }
+
+        console.log("0, 0 = " + this.nn.feedForward([0, 0]).data);
+        console.log("0, 1 = " + this.nn.feedForward([0, 1]).data);
+        console.log("1, 0 = " + this.nn.feedForward([1, 0]).data);
+        console.log("1, 1 = " + this.nn.feedForward([1, 1]).data);
     }
 
     onEnable(): void {
+        console.log('=========');
+
         this._time = Date.now();
         this._gameBox = this.owner.getChildByName("gameBox") as Sprite;
+
+        this.shooter = this.owner.getChildByName('shooter') as Sprite;
+
+        if (this.flag_first) {
+            let i0 = this.owner.getChildByName('i0') as Sprite;
+            let i1 = this.owner.getChildByName('i1') as Sprite;
+            let h0 = this.owner.getChildByName('h0') as Sprite;
+            let h1 = this.owner.getChildByName('h1') as Sprite;
+            let h2 = this.owner.getChildByName('h2') as Sprite;
+            let h3 = this.owner.getChildByName('h3') as Sprite;
+            let h4 = this.owner.getChildByName('h4') as Sprite;
+            let o0 = this.owner.getChildByName('o0') as Sprite;
+
+            this.inputImgs = [i0, i1];
+            this.hiddenImgs = [h0, h1, h2, h3, h4];
+            this.outputImg = o0 as Sprite;
+            i0.x = i1.x -= 600;
+            h0.x = h1.x = h2.x = h3.x = h4.x -= 600;
+            o0.x -= 600;
+            i0.pivotX = i1.pivotX = h0.pivotX = h1.pivotX = h2.pivotX = h3.pivotX = h4.pivotX = o0.pivotX = i0.width / 2;
+            i0.pivotY = i1.pivotY = h0.pivotY = h1.pivotY = h2.pivotY = h3.pivotY = h4.pivotY = o0.pivotY = i0.width / 2;
+
+            this.inputLabels = [];
+            this.hiddenLabels = [];
+            this.outputLabel = new Label('0.000');
+
+            let d = Laya.stage.graphics;
+            for (let i = 0; i < this.inputImgs.length; i++) {
+                let lb = new Label('0.000');
+                lb.fontSize = 20;
+                lb.pos(this.inputImgs[i].x - 26, this.inputImgs[i].y - 8);
+                Laya.stage.addChild(lb);
+                this.inputLabels.push(lb);
+
+                for (let j = 0; j < this.hiddenImgs.length; j++) {
+                    d.drawLine(this.inputImgs[i].x, this.inputImgs[i].y, this.hiddenImgs[j].x, this.hiddenImgs[j].y, 'ff0000', 2);
+
+                    if (i == 0) {
+                        d.drawLine(this.hiddenImgs[j].x, this.hiddenImgs[j].y, this.outputImg.x, this.outputImg.y, 'ff0000', 2);
+
+                        lb = new Label('0.000');
+                        lb.fontSize = 20;
+                        lb.pos(this.hiddenImgs[j].x - 26, this.hiddenImgs[j].y - 8);
+                        Laya.stage.addChild(lb);
+                        this.hiddenLabels.push(lb);
+                    }
+
+                }
+            }
+
+            this.outputLabel.fontSize = 20;
+            this.outputLabel.pos(this.outputImg.x - 26, this.outputImg.y - 8);
+            Laya.stage.addChild(this.outputLabel);
+
+            console.log(this.inputLabels.length, ' // ', this.hiddenLabels.length);
+
+            this.flag_first = false;
+        }
+
     }
 
     onUpdate(): void {
-        //每间隔一段时间创建一个盒子
-        let now = Date.now();
-        if (now - this._time > this.createBoxInterval && this._started) {
-            this._time = now;
-            this.createBox();
-        }
-
-        if (this.boxes) {
-            this.boxes.forEach((i, j) => {
-                this.boxes[j].getComponent(Script).normalRoll();
-                this.boxes[0].getComponent(Script).onFastest = false;
-            });
-
-            this.boxes.sort((a, b) => { return b.y - a.y });
-            if (this.boxes[0]) {
-                this.boxes[0].getComponent(Script).onFastest = true;
-                this.boxes[0].getComponent(Script).fasterRoll();
+        if (this._started) {
+            //每间隔一段时间创建一个盒子
+            let now = Date.now();
+            if (now - this._time > this.createBoxInterval) {
+                this._time = now;
+                this.createBox();
             }
+
+            if (this.boxes) {
+                let max_y_idx = 0;
+                let temp_y = Number.MIN_VALUE;
+                this.boxes.forEach((i, j) => {
+                    i.getComponent(Script).normalRoll();
+                    if (i.y > temp_y) {
+                        max_y_idx = j;
+                        temp_y = i.y;
+                    }
+                });
+
+                if (this.boxes[max_y_idx]) this.boxes[max_y_idx].getComponent(Script).fasterRoll();
+            }
+            this.shooter.x = Laya.stage.mouseX - this.shooter.width / 2;
+
+            this.onStageClick(new Event());
         }
+
     }
 
-    public boxes: Sprite[];
+
 
     createBox(): void {
         //使用对象池创建盒子
@@ -117,7 +243,8 @@ export default class GameControl extends Script {
         e.stopPropagation();
         //舞台被点击后，使用对象池创建子弹
         let flyer: Sprite = Pool.getItemByCreateFun("bullet", this.bullet.create, this.bullet);
-        flyer.pos(Laya.stage.mouseX, Laya.stage.mouseY);
+        // flyer.pos(Laya.stage.mouseX - 15, Laya.stage.mouseY); // 15 is bullet image width / 2 ;
+        flyer.pos(Laya.stage.mouseX - 15, this.shooter.y);
         this._gameBox.addChild(flyer);
     }
 
