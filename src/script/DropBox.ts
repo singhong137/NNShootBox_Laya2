@@ -69,9 +69,15 @@ export default class DropBox extends Script {
             }
             GameUI.instance.addScore(1);
         } else if (other.label === "ground") {
+            GameUI.instance.control.boxes.forEach((i, j) => {
+                if (i == owner) GameUI.instance.control.boxes.splice(j, 1);
+            });
+
+            GameUI.instance.addScore(-this.level);
+
             //只要有一个盒子碰到地板，则停止游戏
             owner.removeSelf();
-            GameUI.instance.stopGame();
+            // GameUI.instance.stopGame();///////////////////////////
         }
     }
 

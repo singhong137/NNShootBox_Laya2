@@ -1,7 +1,7 @@
 const NUM_INPUTS: number = 2;
 const NUM_HIDDEN: number = 5;
 const NUM_OUTPUTS: number = 1;
-const NUM_SAMPLES: number = 10000;
+const NUM_SAMPLES: number = 1000;
 
 import DropBox from "./DropBox";
 import Bullet from "./Bullet";
@@ -45,11 +45,19 @@ export default class GameControl extends Script {
     private outputLabel: Label;
 
     public boxes: Sprite[];
+    private nearestBox: Sprite;
 
     private nn: NeuralNetwork;
 
-    private ax: number=0; // shooter加速度
+    private ax: number = 0; // shooter加速度
+    private ax_max: number = 10;
 
+    private shootInterval: number = 15;
+    private shootCount: number = 15;
+
+    private _trainCount: number = 1;
+
+    public nn_go: boolean = false;
 
     constructor() {
         super();
@@ -72,7 +80,7 @@ export default class GameControl extends Script {
         console.log('-----------test nn-----------');
 
         this.nn = new NeuralNetwork(NUM_INPUTS, NUM_HIDDEN, NUM_OUTPUTS);
-        for (let i = 0; i < NUM_SAMPLES; i++) {
+        for (let i = 0; i < NUM_SAMPLES * 2; i++) {
             // TEST XOR gate logic
             // 0 0 = 0
             // 0 1 = 1
@@ -98,18 +106,19 @@ export default class GameControl extends Script {
             //     'bias1 : ',
             //     this.nn.bias1
             // );
-            console.log('inputs : ');
-            console.table(this.nn.inputs.data);
-            console.log('hidden : ');
-            console.table(this.nn.hidden.data);
-            console.log('weight0 : ');
-            console.table(this.nn.weights0.data);
-            console.log('weight1 : ');
-            console.table(this.nn.weights1.data);
-            console.log('bias0 : ');
-            console.table(this.nn.bias0.data);
-            console.log('bias1 : ');
-            console.table(this.nn.bias1.data);
+
+            // console.log('inputs : ');
+            // console.table(this.nn.inputs.data);
+            // console.log('hidden : ');
+            // console.table(this.nn.hidden.data);
+            // console.log('weight0 : ');
+            // console.table(this.nn.weights0.data);
+            // console.log('weight1 : ');
+            // console.table(this.nn.weights1.data);
+            // console.log('bias0 : ');
+            // console.table(this.nn.bias0.data);
+            // console.log('bias1 : ');
+            // console.table(this.nn.bias1.data);
         }
 
         // test output
@@ -168,19 +177,19 @@ export default class GameControl extends Script {
                 let lb = new Label('0.000');
                 lb.fontSize = 20;
                 lb.pos(this.inputImgs[i].x - 26, this.inputImgs[i].y - 8);
-                Laya.stage.addChild(lb);
+                this.owner.addChild(lb);
                 this.inputLabels.push(lb);
 
                 for (let j = 0; j < this.hiddenImgs.length; j++) {
-                    d.drawLine(this.inputImgs[i].x, this.inputImgs[i].y, this.hiddenImgs[j].x, this.hiddenImgs[j].y, 'ff0000', 2);
+                    d.drawLine(this.inputImgs[i].x, this.inputImgs[i].y, this.hiddenImgs[j].x, this.hiddenImgs[j].y, '33ff33', 2);
 
                     if (i == 0) {
-                        d.drawLine(this.hiddenImgs[j].x, this.hiddenImgs[j].y, this.outputImg.x, this.outputImg.y, 'ff0000', 2);
+                        d.drawLine(this.hiddenImgs[j].x, this.hiddenImgs[j].y, this.outputImg.x, this.outputImg.y, '33ff33', 2);
 
                         lb = new Label('0.000');
                         lb.fontSize = 20;
                         lb.pos(this.hiddenImgs[j].x - 26, this.hiddenImgs[j].y - 8);
-                        Laya.stage.addChild(lb);
+                        this.owner.addChild(lb);
                         this.hiddenLabels.push(lb);
                     }
 
@@ -189,12 +198,18 @@ export default class GameControl extends Script {
 
             this.outputLabel.fontSize = 20;
             this.outputLabel.pos(this.outputImg.x - 26, this.outputImg.y - 8);
-            Laya.stage.addChild(this.outputLabel);
+            this.owner.addChild(this.outputLabel);
 
             console.log(this.inputLabels.length, ' // ', this.hiddenLabels.length);
 
             this.flag_first = false;
+
+            this.owner.addChild(this._gameBox);
+            this.owner.addChild(this.owner.getChildByName('UI'));
+            this.owner.addChild(this.shooter);
         }
+
+        this.shooter.x = Laya.stage.width / 2;
 
     }
 
@@ -218,16 +233,100 @@ export default class GameControl extends Script {
                     }
                 });
 
-                if (this.boxes[max_y_idx]) this.boxes[max_y_idx].getComponent(Script).fasterRoll();
+                if (this.boxes[max_y_idx]) {
+                    this.boxes[max_y_idx].getComponent(Script).fasterRoll();
+                    this.nearestBox = this.boxes[max_y_idx];
+                }
             }
-            this.shooter.x = Laya.stage.mouseX - this.shooter.width / 2;
+            // this.shooter.x = Laya.stage.mouseX;
+            // this.onStageClick(new Event());
 
-            this.onStageClick(new Event());
+            // if (this.nearestBox) {
+            //     this.shooter.x = this.nearestBox.x ;
+            //     if (this.nearestBox.y - this.shooter.y < 100) {
+
+            //         this.onStageClick(new Event(), this.nearestBox.x);
+            //     }
+            // }
+
+            if (this.nearestBox) {
+                let dx = this.nearestBox.x - this.shooter.x;
+                this.ax = dx / 10;
+                if (Math.abs(this.ax) > this.ax_max) {
+                    this.ax = this.ax_max * (dx > 0 ? 1 : -1);
+                }
+                // this.shooter.x += dx / 10;
+                let direction = dx > 0 ? 1 : 0;
+
+                let dy = this.nearestBox.y - this.shooter.y;
+                // console.log('dy : ', dy);
+                if (dy > -Laya.stage.height) {
+                    if (this.nn_go) {
+                        //--------------- nn.feedForward ---------------
+                        let out = this.nn.feedForward([direction, Math.abs(this.ax) / this.ax_max]).data[0][0];
+                        console.log('out before : ', out);
+                        if (out < 0.5) {
+                            out = 0.5 - out;
+                            out *= -2;
+                        } else {
+                            // out = (out - 0.5) * 2;
+                            out -= 0.5;
+                            out *= 2;
+                        }
+                        out *= this.ax_max;
+                        this.shooter.x += out;
+                        if (this.shootCount < 0) {
+                            this.onStageClick(new Event(), this.shooter.x);
+                            this.shootCount = this.shootInterval;
+                        }
+
+                        console.log('out after : ', out);
+                    } else {
+                        this.shooter.x += this.ax;
+                        if (this.shootCount < 0) {
+                            this.onStageClick(new Event(), this.shooter.x);
+                            this.shootCount = this.shootInterval;
+                        }
+
+                        //-------------- nn.train() -----------------
+
+
+                        //nn train///////////////////////////////////////////////////////////
+                        // for (let i = 0; i < this._trainCount; i++) {
+                        //     let input0 = Math.round(Math.random()); // 0 or 1
+                        //     let input1 = Math.round(Math.random()); // 0 or 1
+                        //     let output = input0 == input1 ? 0 : 1;
+                        //     this.nn.train([input0, input1], [output]);
+                        // }
+
+                        let tax = this.ax / (this.ax_max * 2);
+                        if (tax < 0) {
+                            tax *= -1;
+                        } else {
+                            tax += 0.5;
+                        }
+
+                        this.nn.train([direction, Math.abs(this.ax) / this.ax_max], [tax]);
+                        console.log('ax : ', this.ax, ' // ', tax);
+
+                    }
+
+                }
+
+            }
+            this.shootCount--;
+
+            this.inputLabels.forEach((i, j) => i.text = this.nn.inputs.data[0][j].toString());
+            this.hiddenLabels.forEach((i, j) => i.text = this.nn.hidden.data[0][j].toString());
+            this.outputLabel.text = this.nn.feedForward([0, 0]).data[0][0].toString();
+
         }
 
     }
 
-
+    setTrainCount(n: number) {
+        this._trainCount = n;
+    }
 
     createBox(): void {
         //使用对象池创建盒子
@@ -238,13 +337,20 @@ export default class GameControl extends Script {
         this.boxes.push(box);
     }
 
-    onStageClick(e: Event): void {
+    onStageClick(e: Event, x?: number): void {
+        if (!this._started) return;
+        // console.log(e.target.mouseX);
         //停止事件冒泡，提高性能，当然也可以不要
         e.stopPropagation();
         //舞台被点击后，使用对象池创建子弹
         let flyer: Sprite = Pool.getItemByCreateFun("bullet", this.bullet.create, this.bullet);
         // flyer.pos(Laya.stage.mouseX - 15, Laya.stage.mouseY); // 15 is bullet image width / 2 ;
-        flyer.pos(Laya.stage.mouseX - 15, this.shooter.y);
+        if (x) {
+            flyer.pos(x - 15, this.shooter.y);
+        } else {
+            flyer.pos(Laya.stage.mouseX - 15, this.shooter.y);
+        }
+
         this._gameBox.addChild(flyer);
     }
 
