@@ -275,6 +275,9 @@ export default class GameControl extends Script {
                         }
                         out *= this.ax_max;
                         this.shooter.x += out;
+                        if (this.shooter.x < 0) this.shooter.x = 0;
+                        if (this.shooter.x > Laya.stage.width) this.shooter.x = Laya.stage.width;
+
                         if (this.shootCount < 0) {
                             this.onStageClick(new Event(), this.shooter.x);
                             this.shootCount = this.shootInterval;
@@ -306,8 +309,10 @@ export default class GameControl extends Script {
                             tax += 0.5;
                         }
 
-                        this.nn.train([direction, Math.abs(this.ax) / this.ax_max], [tax]);
-                        console.log('ax : ', this.ax, ' // ', tax);
+                        for(let i=0;i<this._trainCount;i++){
+                            this.nn.train([direction, Math.abs(this.ax) / this.ax_max], [tax]);
+                            console.log('ax : ', this.ax, ' // ', tax);
+                        }
 
                     }
 
